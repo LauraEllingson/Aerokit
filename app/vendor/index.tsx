@@ -1,3 +1,4 @@
+// app/vendor/index.tsx
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
@@ -21,7 +22,7 @@ type OrderRow = {
   total_cents: number;
   window_start: string;
   window_end: string;
-  invoice_number: number | null; // allow null just in case
+  invoice_number: number; // now an int in DB
   items_json?: {
     id: string;
     name: string;
@@ -37,17 +38,6 @@ type TailGroup = {
   orders: OrderRow[];
   nextTime: number;
 };
-
-function formatInvoice(n: unknown) {
-  const v =
-    typeof n === 'number'
-      ? n
-      : typeof n === 'string'
-      ? parseInt(n, 10)
-      : NaN;
-  if (!Number.isFinite(v) || v <= 0) return '00000';
-  return String(v).padStart(5, '0');
-}
 
 export default function VendorDashboard() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
@@ -73,11 +63,7 @@ export default function VendorDashboard() {
     setLoading(false);
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   useEffect(() => {
     const channel = supabase
@@ -88,9 +74,7 @@ export default function VendorDashboard() {
         () => load()
       )
       .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [load]);
 
   const onRefresh = useCallback(async () => {
@@ -107,6 +91,7 @@ export default function VendorDashboard() {
     if (error) alert('Failed to update: ' + error.message);
   }
 
+  // Group by tail; sort within each tail; sort cards by earliest delivery
   const tailGroups: TailGroup[] = useMemo(() => {
     const grouped = orders.reduce<Record<string, OrderRow[]>>((acc, o) => {
       const key = (o.tail_number || 'UNKNOWN').toUpperCase();
@@ -118,8 +103,7 @@ export default function VendorDashboard() {
     const arr: TailGroup[] = Object.entries(grouped).map(([tail, list]) => {
       const sorted = [...list].sort(
         (a, b) =>
-          new Date(a.window_start).getTime() -
-          new Date(b.window_start).getTime()
+          new Date(a.window_start).getTime() - new Date(b.window_start).getTime()
       );
       return {
         tail,
@@ -195,20 +179,13 @@ export default function VendorDashboard() {
                 backgroundColor: 'white',
               }}
             >
-              <Text
-                style={{ fontWeight: '800', fontSize: 16, marginBottom: 6 }}
-              >
+              <Text style={{ fontWeight: '800', fontSize: 16, marginBottom: 6 }}>
                 Tail {item.tail}{' '}
-                <Text style={{ fontWeight: '400' }}>
-                  ({item.orders.length} orders)
-                </Text>
+                <Text style={{ fontWeight: '400' }}>({item.orders.length} orders)</Text>
               </Text>
 
               {/* Orders inside card: numbered 1..N */}
-              <ScrollView
-                style={{ maxHeight: 520 }}
-                contentContainerStyle={{ paddingBottom: 8 }}
-              >
+              <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ paddingBottom: 8 }}>
                 {item.orders.map((o, idx) => (
                   <View
                     key={o.id}
@@ -220,15 +197,12 @@ export default function VendorDashboard() {
                       borderColor: '#e6e6e6',
                     }}
                   >
-                    {/* Show padded invoice at the END */}
                     <Text style={{ fontWeight: '700', marginBottom: 4 }}>
-                      {idx + 1}) {o.status.toUpperCase()} · Invoice: {formatInvoice(o.invoice_number)}
+                      {idx + 1}) Invoice #{String(o.invoice_number).padStart(5, '0')} · {o.status.toUpperCase()}
                     </Text>
 
                     {o.fbo_label && <Text>FBO: {o.fbo_label}</Text>}
-                    <Text>
-                      Subtotal: ${(o.subtotal_cents / 100).toFixed(2)}
-                    </Text>
+                    <Text>Subtotal: ${(o.subtotal_cents / 100).toFixed(2)}</Text>
                     <Text>Total: ${(o.total_cents / 100).toFixed(2)}</Text>
                     <Text style={{ marginTop: 2 }}>
                       Window: {new Date(o.window_start).toLocaleString()} →{' '}
@@ -240,8 +214,7 @@ export default function VendorDashboard() {
                         <Text style={{ fontWeight: '600' }}>Items:</Text>
                         {o.items_json.map((it, iidx) => (
                           <Text key={iidx} style={{ marginLeft: 8 }}>
-                            • {it.qty} × {it.name} ($
-                            {(it.unit_cents / 100).toFixed(2)} ea) — $
+                            • {it.qty} × {it.name} (${(it.unit_cents / 100).toFixed(2)} ea) — $
                             {(it.line_total_cents / 100).toFixed(2)}
                           </Text>
                         ))}
